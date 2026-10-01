@@ -24,6 +24,11 @@ HOOK = '''        if self.vllm_config.additional_config.get("qwen4_mtp_draft_voc
             install(draft_model, self.vllm_config)
 '''
 
+LEGACY_PATH = "vllm/v1/spec_decode/llm_base_proposer.py"
+LEGACY_BLOB = "9f7ad68a88a6bbd857f854347a2c9d861b78cb60"
+LEGACY_ANCHOR = "        self._maybe_share_lm_head(target_language_model)\n"
+LEGACY_HOOK = HOOK.replace("install(draft_model,", "install(self.model,")
+
 
 def git(root: Path, *args: str, data: str | None = None) -> str:
     result = subprocess.run(["git", "-C", str(root), *args], input=data,
@@ -49,27 +54,35 @@ def make_diff(before: str, after: str, path: str, new: bool = False) -> str:
 
 def prepare(root: Path, runtime: str) -> tuple[str, bool]:
     """Validate just the touched files; the existing PLE patch may be uncommitted."""
-    source_path, module_path = root / HOOK_PATH, root / MODULE_PATH
-    for path in (source_path, module_path):
+    hooks = ((HOOK_PATH, SOURCE_BLOB, ANCHOR, HOOK),
+             (LEGACY_PATH, LEGACY_BLOB, LEGACY_ANCHOR, LEGACY_HOOK))
+    patches, states = [], []
+    module_path = root / MODULE_PATH
+    for relative in (HOOK_PATH, LEGACY_PATH, MODULE_PATH):
+        path = root / relative
         if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
             raise ValueError(f"refusing a symlink/out-of-checkout path: {path}")
-    current_raw = source_path.read_bytes()
-    current = current_raw.decode("utf-8")
-    if current.count(ANCHOR) != 1:
-        raise ValueError("MTP loading anchor is missing or ambiguous")
-    installed = ANCHOR + HOOK in current
-    before = current.replace(ANCHOR + HOOK, ANCHOR, 1) if installed else current
-    if blob_sha(before.encode("utf-8")) != SOURCE_BLOB:
-        raise ValueError("MTP speculator differs from the audited pinned source; refusing edits")
+    for relative, expected_blob, anchor, hook in hooks:
+        current = (root / relative).read_bytes().decode("utf-8")
+        if current.count(anchor) != 1:
+            raise ValueError(f"loading anchor is missing or ambiguous: {relative}")
+        installed = anchor + hook in current
+        before = current.replace(anchor + hook, anchor, 1) if installed else current
+        if blob_sha(before.encode("utf-8")) != expected_blob:
+            raise ValueError(f"{relative} differs from audited pinned source; refusing edits")
+        after = before.replace(anchor, anchor + hook, 1)
+        patches.append(make_diff(before, after, relative))
+        states.append(installed)
+    if any(states) != all(states):
+        raise ValueError("partially installed hooks; restore using the original installer first")
+    installed = all(states)
     if installed:
         if not module_path.exists() or module_path.read_bytes() != runtime.encode("utf-8"):
             raise ValueError("installed module is missing/modified; refusing overwrite or removal")
     elif module_path.exists():
-        raise ValueError("experiment module already exists without the expected hook")
-    after = before.replace(ANCHOR, ANCHOR + HOOK, 1)
-    patch = make_diff(before, after, HOOK_PATH)
-    patch += make_diff("", runtime, MODULE_PATH, new=True)
-    return patch, installed
+        raise ValueError("experiment module already exists without the expected hooks")
+    patches.append(make_diff("", runtime, MODULE_PATH, new=True))
+    return "".join(patches), installed
 
 
 def run(root: Path, runtime: str, action: str) -> str:
