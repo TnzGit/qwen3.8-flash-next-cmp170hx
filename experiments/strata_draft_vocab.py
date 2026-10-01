@@ -58,7 +58,7 @@ class SubsetLogitsProcessor(nn.Module):
 
     Build AFTER vLLM shares the target LM head, BEFORE graph capture. The target's
     head and processor are not modified. The additional BF16 weight copy is real
-    VRAM overhead, not a memory saving. No CPU work/copies occur in forward.
+    VRAM overhead, not a memory saving. No CPU tensor work or host/device copies occur in forward.
     """
     def __init__(self, processor: nn.Module, head: nn.Module,
                  ids: list[int], vocab_size: int):
@@ -106,7 +106,7 @@ def validate_settings(config) -> None:
 
 
 def install(model: nn.Module, config) -> bool:
-    """Called only by the new-runner MTP load hook, after load_eagle_model()."""
+    """Called by either runner load hook, after target head sharing completes."""
     path = config.additional_config.get(KEY)
     if not path:
         return False
