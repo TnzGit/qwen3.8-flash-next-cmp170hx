@@ -88,6 +88,17 @@ class MTPSpeculator(AutoRegressiveSpeculator):
             self.model.model.set_skip_topk(False)
 '''
 
+# Reduced legacy-proposer fixture: only loader/share ordering is reproduced.
+# The production installer checks the FULL upstream legacy file's Git blob;
+# this fixture substitutes its own checksum only via pytest monkeypatch.
+LEGACY_ORIGINAL = """class SpecDecodeBaseProposer:
+    def load_model(self, target_language_model):
+        self._maybe_share_lm_head(target_language_model)
+
+    def _maybe_share_lm_head(self, target_language_model):
+        self.model.lm_head = target_language_model.lm_head
+"""
+
 
 def settings():
     return NS(speculative_config=NS(method="mtp", draft_sample_method="greedy",
@@ -259,12 +270,16 @@ def test_build_cjk_code_heuristic_mock_tokenizer(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def checkout(tmp_path):
+def checkout(tmp_path, monkeypatch):
     root = tmp_path / "vllm"
     source = root / installer.HOOK_PATH
     source.parent.mkdir(parents=True)
     (root / installer.MODULE_PATH).parent.mkdir(parents=True)
     source.write_text(ORIGINAL)
+    legacy = root / installer.LEGACY_PATH
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(LEGACY_ORIGINAL)
+    monkeypatch.setattr(installer, "LEGACY_BLOB", installer.blob_sha(LEGACY_ORIGINAL.encode()))
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     installer.git(root, "add", ".")
     installer.git(root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
@@ -285,11 +300,13 @@ def test_installer_forward_reverse_and_idempotency(checkout, monkeypatch):
     assert "OFF by default" in installer.run(checkout, runtime, "apply")
     actual = (checkout / installer.HOOK_PATH).read_text()
     assert installer.ANCHOR + installer.HOOK in actual
+    assert installer.LEGACY_ANCHOR + installer.LEGACY_HOOK in (checkout / installer.LEGACY_PATH).read_text()
     assert (checkout / installer.MODULE_PATH).read_text() == runtime
     assert "Already installed" in installer.run(checkout, runtime, "apply")
     assert "reversibility checked" in installer.run(checkout, runtime, "check")
     assert "removed" in installer.run(checkout, runtime, "reverse")
     assert (checkout / installer.HOOK_PATH).read_text() == ORIGINAL
+    assert (checkout / installer.LEGACY_PATH).read_text() == LEGACY_ORIGINAL
     assert not (checkout / installer.MODULE_PATH).exists()
     assert installer.git(checkout, "status", "--porcelain") == ""
     assert "Already absent" in installer.run(checkout, runtime, "reverse")
@@ -319,6 +336,43 @@ def test_modified_installed_module_not_removed(checkout, monkeypatch):
     with pytest.raises(ValueError, match="modified"):
         installer.run(checkout, runtime, "reverse")
     assert module.read_text() == "# user edit\n"
+
+
+def test_legacy_edit_refused(checkout, monkeypatch):
+    monkeypatch.setattr(installer, "PIN", installer.git(checkout, "rev-parse", "HEAD"))
+    path = checkout / installer.LEGACY_PATH
+    path.write_text(LEGACY_ORIGINAL + "# user customization\n")
+    with pytest.raises(ValueError, match="audited"):
+        installer.run(checkout, "# runtime\n", "apply")
+    assert path.read_text().endswith("# user customization\n")
+
+
+def test_partial_install_refused(checkout, monkeypatch):
+    monkeypatch.setattr(installer, "PIN", installer.git(checkout, "rev-parse", "HEAD"))
+    path = checkout / installer.HOOK_PATH
+    path.write_text(ORIGINAL.replace(installer.ANCHOR, installer.ANCHOR + installer.HOOK))
+    with pytest.raises(ValueError, match="partially installed"):
+        installer.run(checkout, "# runtime\n", "apply")
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_legacy_hook_runs_after_sharing(checkout, monkeypatch, enabled):
+    from types import ModuleType
+    monkeypatch.setattr(installer, "PIN", installer.git(checkout, "rev-parse", "HEAD"))
+    installer.run(checkout, "# runtime\n", "apply")
+    seen = []
+    module = ModuleType("vllm.models.qwen4_exp.nvidia.mtp_draft_vocab")
+    module.install = lambda model, config: seen.append(model.lm_head)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    namespace = {}
+    exec((checkout / installer.LEGACY_PATH).read_text(), namespace)
+    proposer = namespace["SpecDecodeBaseProposer"]()
+    proposer.model = NS(lm_head=object())
+    proposer.vllm_config = NS(additional_config={exp.KEY: "map.json"} if enabled else {})
+    target = NS(lm_head=object())
+    proposer.load_model(target)
+    assert proposer.model.lm_head is target.lm_head
+    assert seen == ([target.lm_head] if enabled else [])
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires local CUDA GPU")
