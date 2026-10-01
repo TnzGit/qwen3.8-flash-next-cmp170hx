@@ -8,7 +8,7 @@
 
 优先借鉴 **MTP 草稿专用的小词表 head**，其次借鉴 **按“最终接受 token / 整轮耗时”选择投机策略** 的评测方式。没有证据表明移植后一定有收益，更没有依据承诺提升几十个百分点。不要迁移 Strata 的整套引擎、GGUF 格式或 CPU 专家卸载路径。
 
-本分支只新增文件，不修改原始 `patches/qwen38-ple-ssd.patch`、`scripts/serve.sh`、模型权重、现有结果或生产默认配置。安装器仅在显式 `--apply` 后修改另一个本地 vLLM checkout 的两处：新增实验模块；在 MTP 加载完并完成 head 共享后增加 4 行 hook。关闭时不导入实验模块，也不包装 logits processor。
+本分支只新增文件，不修改原始 `patches/qwen38-ple-ssd.patch`、`scripts/serve.sh`、模型权重、现有结果或生产默认配置。安装器仅在显式 `--apply` 后修改另一个本地 vLLM checkout 的三处：新增实验模块；在旧 proposer 和新 runner 的 MTP 加载路径上，分别于 head 共享完成后增加 4 行 hook。关闭时不导入实验模块，也不包装 logits processor。
 
 ## 审计基线
 
@@ -17,9 +17,10 @@
 | 本 fork / iIIusi0n 原仓库 | `c7fe762c415c9f53fabccdadc25be949eb92052f`；本轮比较时 main 一致 |
 | vLLM | `a5a30471ff2bb7f0824f2da10e358af98d304472` |
 | Strata | `9259cad4cfa3543cd3b8decab5962672b968c649` |
-| vLLM MTP speculator 原始 Git blob | `d94702612d9ba01f033e751592f93881dc991f6d` |
+| vLLM 新 runner MTP speculator 原始 Git blob | `d94702612d9ba01f033e751592f93881dc991f6d` |
+| vLLM 旧 runner proposer 原始 Git blob | `9f7ad68a88a6bbd857f854347a2c9d861b78cb60` |
 
-安装器同时核对 vLLM HEAD 和被修改文件的原始 Git blob，不会自动 checkout、reset、升级或“修复”版本漂移。现有 PLE 补丁可以是未提交修改；只要没有改动本实验涉及的文件，不要求整个 checkout 干净。测试 fixture 的 Git blob 已与上述原始文件核对，但这不是一次完整 vLLM 安装或集成测试。
+安装器同时核对 vLLM HEAD 和被修改文件的原始 Git blob，不会自动 checkout、reset、升级或“修复”版本漂移。现有 PLE 补丁可以是未提交修改；只要没有改动本实验涉及的文件，不要求整个 checkout 干净。新 runner 的测试 fixture 已与原始 Git blob 核对；旧 proposer 用缩小的 fixture 测加载顺序和补丁机制，生产安装仍检查完整旧 proposer 的上述 blob。这不是一次完整 vLLM 安装或集成测试。
 
 ## 哪些值得借，哪些不值得
 
@@ -39,7 +40,8 @@
 - [Strata DETAILS](https://github.com/Niko1221/Strata/blob/9259cad4cfa3543cd3b8decab5962672b968c649/docs/DETAILS.md)：旧 en/code 子集 40,525 IDs，仅包含 55,328 个 Han tokens 中的 27 个；补齐 CJK 后子集 106,299 IDs。其 15–38% 是 Q2_0 / RTX5070 上修复自己旧子集后的 CJK 增益，**不是相对完整词表 vLLM 的增益**。
 - [Strata 成本策略](https://github.com/Niko1221/Strata/blob/9259cad4cfa3543cd3b8decab5962672b968c649/src/spec/draft_policy.cpp)：观察整轮耗时与接受量，决定 lookup 与 MTP；初始成本曲线含特定硬件先验，不能原样套到 CMP170HX。
 - [固定版本 Qwen4ExpMTP](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/models/qwen4_exp/nvidia/mtp.py)：完整词表 ParallelLMHead / LogitsProcessor。
-- [固定版本 head 共享](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/v1/worker/gpu/spec_decode/eagle/utils.py)：加载 draft 后替换为目标模型 head；实验必须在其后准备副本。
+- [旧 runner 加载与 head 共享](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/v1/spec_decode/llm_base_proposer.py)：`load_model()` 调用 `_maybe_share_lm_head()` 后接入实验，不需要更换当前 runner。
+- [固定版本新 runner head 共享](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/v1/worker/gpu/spec_decode/eagle/utils.py)：加载 draft 后替换为目标模型 head；实验必须在其后准备副本。
 - [固定版本 draft 采样](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/v1/worker/gpu/spec_decode/speculator.py)与 [logits processor](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/model_executor/layers/logits_processor.py)：原型保留完整输出宽度和全局 ID，不改采样器/验证器。
 - [固定版本 low_latency_gemm.py](https://github.com/vllm-project/vllm/blob/a5a30471ff2bb7f0824f2da10e358af98d304472/vllm/models/qwen4_exp/nvidia/low_latency_gemm.py)：只选择 SM90/SM103 专用 plans。
 
@@ -47,7 +49,7 @@ Strata 的速度表涉及不同 GPU、CPU、权重量化和 prompt；不做跨�
 
 ## 实验如何工作
 
-在新 GPU runner 的 `MTPSpeculator.load_draft_model()` 中，等待 `load_eagle_model()` 返回，再在 **draft 模型对象** 上包装 `logits_processor`：
+同时接入两条已审计的加载路径：新 runner 等 `load_eagle_model()` 返回；旧 proposer 等 `_maybe_share_lm_head()` 完成。两者都在 **draft 模型对象** 上包装 `logits_processor`，不要求切换 runner：
 
 1. 从已经共享好的 BF16 head 中，一次性复制选中行到连续 GPU buffer。
 2. 每个 draft 步使用原有 unquantized method 和 logits processor 计算较短 head；保留原 soft-cap / scale 处理。
@@ -67,11 +69,11 @@ full-vocab 控制组额外复制约 1.184 GiB，因此也要先检查显存余�
 
 ### 有意限制的支持范围
 
-仅支持本轮审计的 pinned vLLM **新 GPU runner / NVIDIA Qwen4ExpMTP / SM80 / TP=PP=DP=PCP=DCP=1 / BF16 非量化 head / greedy draft sampling**。不支持 probabilistic draft、local argmax reduction、adaptive verification、LoRA、watermark、运行中换权重或换 tokenizer。拒绝这些组合是保护，不应删除 guard 后直接生产运行。
+仅支持本轮审计的 pinned vLLM **旧 proposer 或新 GPU runner / NVIDIA Qwen4ExpMTP / SM80 / TP=PP=DP=PCP=DCP=1 / BF16 非量化 head / greedy draft sampling**。不支持 probabilistic draft、local argmax reduction、adaptive verification、LoRA、watermark、运行中换权重或换 tokenizer。拒绝这些组合是保护，不应删除 guard 后直接生产运行。
 
 `greedy draft` 与目标请求的 temperature 是两件事。第一轮用目标 temperature=0 做回归；真实随机采样仍需独立质量/分布与性能回归，不能要求不同投机执行的随机样本逐 token 一致。
 
-**必须看到日志 `EXPERIMENTAL qwen4 MTP draft vocabulary ACTIVE`。** 本补丁只接新 runner；旧 runner 或不同安装路径可能根本没经过 hook。没有激活日志的运行是“未生效”，不是性能通过。启用/禁用均需要重启测试进程、重新捕获 CUDA graphs；不支持热切换。
+**必须看到日志 `EXPERIMENTAL qwen4 MTP draft vocabulary ACTIVE`。** 本补丁覆盖旧 proposer 和新 runner；不同安装路径或本地自定义加载器仍可能没有经过 hook。没有激活日志的运行是“未生效”，不是性能通过。启用/禁用均需要重启测试进程、重新捕获 CUDA graphs；不支持热切换。
 
 ## 给本地 agent 的操作步骤
 
@@ -116,7 +118,7 @@ manifest 包含完整 ID 列表、vocab size、tokenizer.json SHA256；启用配
 这只分配配置同形状的**随机 BF16 head 和 hidden states**，测 F.linear 与 subset+scatter 的 CUDA graph replay，交替顺序、多轮输出原始样本。没有读完整模型权重，也没有覆盖真实 draft hidden states、MTP 接受率、PLE、目标模型、调度器或端到端请求。`saved_ms_per_3_draft_heads` 只是 3 次相同 head 调用的算术差，**不是每个输出 token 的节省时间**；rows=4 也不等于该请求所有 head 都运行 4 行。若微基准无稳定收益，不必继续接入生产模型。
 
 ```bash
-# 安装只改两处，不重建 CUDA，不改原启动器，不自动启动服务。
+# 安装只改三处，不重建 CUDA，不改原启动器，不自动启动服务。
 "$PY" scripts/apply-strata-draft-vocab.py --vllm-dir "$VLLM_DIR" --apply
 ```
 
@@ -175,9 +177,9 @@ manifest 包含完整 ID 列表、vocab size、tokenizer.json SHA256；启用配
 
 ## 本轮实际验证与未验证项
 
-本轮运行环境：PyTorch 2.10.0+cpu、无 CUDA、未安装完整 vLLM 或模型 tokenizer。`python -m pytest -q tests/test_strata_draft_vocab.py`：**35 passed, 1 skipped**。跳过的是 CUDA graph replay 测试。
+本轮运行环境：PyTorch 2.10.0+cpu、无 CUDA、未安装完整 vLLM 或模型 tokenizer。`python -m pytest -q tests/test_strata_draft_vocab.py`：**39 passed, 1 skipped**。跳过的是 CUDA graph replay 测试。
 
-已经验证：选中 logits 与 CPU 参考一致、全局 ID 映射、目标 head 不被修改、完整词表控制、soft-cap 后排除值仍为 -inf、非法 ID/配置/hash 拒绝、默认关闭、生成文件不覆盖、安装/重复安装/撤回、拒绝错误 HEAD 和未知文件修改。词表选择测试使用 mock tokenizer；安装测试使用与上游 Git blob 相同的文件 fixture，并在临时 git repo 上做真实 git apply/反向操作。
+已经验证：选中 logits 与 CPU 参考一致、全局 ID 映射、目标 head 不被修改、完整词表控制、soft-cap 后排除值仍为 -inf、非法 ID/配置/hash 拒绝、默认关闭、生成文件不覆盖、安装/重复安装/撤回、拒绝错误 HEAD 和未知文件修改。词表选择测试使用 mock tokenizer；安装测试的新 runner 文件 fixture 与上游 Git blob 相同；旧 proposer fixture 缩小为 head 共享/加载时序，并仅在测试中替换其校验值。临时 git repo 上做了真实 git apply/反向操作，还验证了旧路径 hook 发生在共享之后、默认关闭不执行 hook、部分安装和旧文件未知修改会被拒绝。
 
 **未验证：真实 tokenizer 生成结果、真实 vLLM 加载与运行集成、实际完整 CUDA graphs、CMP170HX kernel 性能、MTP 接受率、端到端 token/质量、150 tok/s 以上的增益。** 必须由本地 agent 完成；当前状态保持 draft。
 
