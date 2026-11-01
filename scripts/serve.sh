@@ -17,6 +17,10 @@ spec=()
 if (( QWEN_MTP > 0 )); then
     spec=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":${QWEN_MTP}}")
 fi
+prompt_tokens_details=()
+if [[ ${QWEN_PROMPT_TOKENS_DETAILS:-0} == 1 ]]; then
+    prompt_tokens_details=(--enable-prompt-tokens-details)
+fi
 capture_sizes="${QWEN_CAPTURE_SIZES:-[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,20,22,24,26,28,30,32,64,128,256,512,1024,2048]}"
 mode=(--compilation-config "{\"cudagraph_mode\":\"${QWEN_GRAPH_MODE:-FULL_AND_PIECEWISE}\",\"cudagraph_capture_sizes\":${capture_sizes}}")
 if [[ ${QWEN_EAGER:-0} == 1 ]]; then
@@ -37,7 +41,7 @@ command=("$VLLM_VENV/bin/vllm" serve "$QWEN_MODEL_DIR" \
     --reasoning-parser qwen3 \
     --enable-auto-tool-choice --tool-call-parser qwen3_xml \
     --additional-config "{\"ple_ssd_offload\":true,\"ple_ssd_workers\":${QWEN_SSD_WORKERS:-16},\"ple_ssd_cache_mb\":${QWEN_SSD_CACHE_MB:-512},\"ple_ssd_native_library\":\"${VLLM_WORKDIR}/optimization/ple_ssd_io.so\",\"ple_ssd_io_depth\":${QWEN_SSD_DEPTH:-256},\"ple_ssd_prefetch_tokens\":${QWEN_SSD_PREFETCH:-16384}}" \
-    "${mode[@]}" "${spec[@]}")
+    "${mode[@]}" "${spec[@]}" "${prompt_tokens_details[@]}")
 if [[ ${QWEN_PRINT_COMMAND:-0} == 1 ]]; then
     printf "%q " "${command[@]}"
     printf "\n"
