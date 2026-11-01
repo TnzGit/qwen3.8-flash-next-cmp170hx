@@ -43,6 +43,7 @@ jobs:
           python -m py_compile "$VLLM_SOURCE/vllm/models/qwen4_exp/nvidia/ops/qsa.py" "$VLLM_SOURCE/vllm/models/qwen4_exp/nvidia/qsa.py"
       - name: Check opt-in CLI flag without starting model
         env:
+          VLLM_WORKDIR: ${{ runner.temp }}/vllm
           QWEN_PRINT_COMMAND: '1'
           QWEN_KV_CACHE_DTYPE: fp8
           QWEN_HOST: 127.0.0.1
