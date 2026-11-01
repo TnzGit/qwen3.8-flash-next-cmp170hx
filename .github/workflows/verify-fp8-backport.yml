@@ -21,9 +21,10 @@ jobs:
           python-version: '3.12'
       - name: Check launcher syntax
         run: |
-          bash -n scripts/common.sh scripts/apply-patch.sh scripts/apply-fp8-kv.sh scripts/install-runtime.sh scripts/serve.sh scripts/serve-cmp170hx-profile.sh
+          for file in scripts/common.sh scripts/apply-patch.sh scripts/apply-fp8-kv.sh scripts/install-runtime.sh scripts/serve.sh scripts/serve-cmp170hx-profile.sh; do bash -n "$file"; done
       - name: Clone exact pinned vLLM revision
         run: |
+          mkdir -p "$RUNNER_TEMP/vllm"
           git clone --filter=blob:none https://github.com/vllm-project/vllm.git "$RUNNER_TEMP/vllm/src"
           git -C "$RUNNER_TEMP/vllm/src" checkout a5a30471ff2bb7f0824f2da10e358af98d304472
       - name: Validate and apply both downstream patches
