@@ -1,6 +1,6 @@
 # Installation and operation
 
-[Model](https://huggingface.co/klee100/Qwen3.8-Flash-Next-AutoRound-3bpw-MTP) · [Patch](../patches/qwen38-ple-ssd.patch)
+[Model](https://huggingface.co/klee100/Qwen3.8-Flash-Next-AutoRound-3bpw-MTP) · [SSD-PLE Patch](../patches/qwen38-ple-ssd.patch) · [Optional SM80 FP8 KV backport](../docs/FP8-SM80.md)
 
 ## Setup
 
@@ -33,7 +33,8 @@ git -C "$VLLM_WORKDIR/src" checkout a5a30471ff2bb7f0824f2da10e358af98d304472
 ```
 
 The runtime environment is **`$VLLM_WORKDIR/.venv`**, normally `~/vllm/.venv`.
-The installer checks and applies the patch, installs the matching precompiled
+The installer checks and applies both the SSD PLE and the separate SM80 FP8 QSA
+backport, installs the matching precompiled
 wheel and build dependencies, installs the source in editable mode, and compiles
 `optimization/ple_ssd_io.so`. The C helper uses Linux system calls and does not
 need libaio/liburing or a vLLM CUDA-kernel rebuild. The model download is pinned
@@ -43,6 +44,7 @@ For an already provisioned matching environment, the individual operations are:
 
 ```bash
 ./scripts/apply-patch.sh
+bash ./scripts/apply-fp8-kv.sh
 ./scripts/build-ple-io.sh
 ```
 
@@ -87,6 +89,7 @@ curl http://localhost:8000/v1/chat/completions \
 | `QWEN_SSD_DEPTH` / `QWEN_SSD_CACHE_MB` | `256` / `512` |
 | `QWEN_SSD_PREFETCH` | `16384` remaining prompt tokens; `0` disables read-ahead |
 | `QWEN_OMP_THREADS` | `1` |
+| `QWEN_KV_CACHE_DTYPE` | `auto` (existing BF16); `fp8` requires backport and **local GPU qualification** |
 
 The launcher enables breakable CUDA graphs, prefix caching, chunked prefill,
 and aligned Mamba state caching. Default graph sizes cover small decode batches
@@ -108,3 +111,11 @@ mkdir -p measurements
 Use a new prefill seed to avoid prefix-cache reuse. The scripts retain responses
 and token usage. [Validation details](RESULTS.md#validation-and-limits)
 include regression commands and known limitations.
+
+## Experimental FP8 main QSA KV for Ampere (SM80/SM86)
+
+The backport is applied to the same pinned vLLM sources, but disabled by default.
+To opt in **on an isolated test copy**, export `QWEN_KV_CACHE_DTYPE=fp8`. This
+compresses main QSA K/V, not all recurrent/indexer state, and it is not yet
+validated on the unlocked CMP 170HX. Read [implementation notes](FP8-SM80.md)
+and the [local agent handover](../handover.md) before changing a live service.
