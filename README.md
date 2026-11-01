@@ -15,6 +15,7 @@ fine-tune) → AutoRound quantization**.
 
 · [Full vLLM patch](patches/qwen38-ple-ssd.patch)
 · [Setup guide](docs/GUIDE.md)
+· [Running CMP170HX uncensored service profile and autostart](docs/CMP170HX-SERVICE.md)
 
 Runs the AutoRound 3 bpw + MTP checkpoint on one **64 GiB SM80 GPU**, with the
 **95.37 GiB BF16 PLE table on SSD** using native asynchronous Linux AIO.
