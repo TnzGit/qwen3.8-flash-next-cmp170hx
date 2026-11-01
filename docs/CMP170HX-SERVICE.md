@@ -48,3 +48,15 @@ WantedBy=default.target
 ```
 
 Install as `~/.config/systemd/user/qwen38-uncensored-autoround-8002.service`, run `systemctl --user daemon-reload` and `systemctl --user enable --now qwen38-uncensored-autoround-8002.service`, and enable lingering with `sudo loginctl enable-linger "$USER"`. The power-limit step requires a narrowly scoped passwordless sudo rule for the exact `nvidia-smi` command, or a separate privileged boot-time power-limit service; without it the unit will not start. Verify with `systemctl --user status`, `loginctl show-user "$USER" -p Linger`, `nvidia-smi -q -d POWER`, and the HTTP endpoints. This template is a portable reconstruction, not a boot-tested copy of the original host configuration.
+
+## Experimental SM80 FP8 QSA KV (separate branch; not production-qualified)
+
+The `feat/sm80-fp8-qsa-kv-backport` branch adds a targeted vLLM #60602
+backport and `QWEN_KV_CACHE_DTYPE` to the launcher; default is `auto`, preserving
+this profile's BF16 behavior. Set `QWEN_KV_CACHE_DTYPE=fp8` only in a separate
+checkout and Python environment after applying both patches. Do not alter this
+systemd service or its editable vLLM source in-place. The existing profile still
+limits `QWEN_SEQS=1`: to test true concurrency, explicitly set `QWEN_SEQS=2`
+in the isolated service and use the [handover test matrix](../handover.md).
+The upstream 1.83× KV capacity result does not establish 2×243200 concurrency
+on this 64 GiB card. See [FP8-SM80.md](FP8-SM80.md).
