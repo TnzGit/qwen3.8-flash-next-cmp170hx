@@ -280,9 +280,7 @@ systemctl --user status qwen38-uncensored-autoround-8002.service
 curl -sf http://127.0.0.1:8002/health
 ```
 
-In the **isolated lab only**, the FP8 source patch can be undone via
-`git -C "$HOME/vllm-fp8-lab/src" apply --reverse
-"$HOME/qwen38-fp8-lab/patches/qwen38-sm80-fp8-qsa-kv.patch"`.
+In the **isolated lab only**, the FP8 source patch can be undone with `git -C "$HOME/vllm-fp8-lab/src" apply --reverse "$HOME/qwen38-fp8-lab/patches/qwen38-sm80-fp8-qsa-kv.patch"`.
 No SSD-PLE rollback is required to recover the unchanged production service.
 
 ## Open issues / boundaries of this handoff
