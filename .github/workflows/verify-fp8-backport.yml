@@ -1,0 +1,52 @@
+name: Verify SM80 FP8 QSA backport (CPU only)
+
+on:
+  push:
+    branches:
+      - feat/sm80-fp8-qsa-kv-backport
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-and-static-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check launcher syntax
+        run: |
+          for file in scripts/common.sh scripts/apply-patch.sh scripts/apply-fp8-kv.sh scripts/install-runtime.sh scripts/serve.sh scripts/serve-cmp170hx-profile.sh; do bash -n "$file"; done
+      - name: Clone exact pinned vLLM revision
+        run: |
+          mkdir -p "$RUNNER_TEMP/vllm"
+          git clone --filter=blob:none https://github.com/vllm-project/vllm.git "$RUNNER_TEMP/vllm/src"
+          git -C "$RUNNER_TEMP/vllm/src" checkout a5a30471ff2bb7f0824f2da10e358af98d304472
+      - name: Validate and apply both downstream patches
+        env:
+          VLLM_WORKDIR: ${{ runner.temp }}/vllm
+        run: |
+          bash scripts/apply-patch.sh
+          bash scripts/apply-fp8-kv.sh
+          bash scripts/apply-fp8-kv.sh
+          git -C "$VLLM_WORKDIR/src" diff --check
+      - name: Python syntax, FP8 byte parity, static integration
+        env:
+          VLLM_SOURCE: ${{ runner.temp }}/vllm/src
+        run: |
+          python -m unittest discover -s tests -p 'test_fp8_sm80_backport.py' -v
+          python -m py_compile "$VLLM_SOURCE/vllm/models/qwen4_exp/nvidia/ops/qsa.py" "$VLLM_SOURCE/vllm/models/qwen4_exp/nvidia/qsa.py"
+          python -m py_compile benchmarks/bench_fp8_kv_capacity.py
+      - name: Check opt-in CLI flag without starting model
+        env:
+          VLLM_WORKDIR: ${{ runner.temp }}/vllm
+          QWEN_PRINT_COMMAND: '1'
+          QWEN_KV_CACHE_DTYPE: fp8
+          QWEN_HOST: 127.0.0.1
+        run: |
+          bash scripts/serve-cmp170hx-profile.sh | grep -F -- '--kv-cache-dtype fp8'

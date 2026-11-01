@@ -30,6 +30,7 @@ command=("$VLLM_VENV/bin/vllm" serve "$QWEN_MODEL_DIR" \
     --served-model-name Qwen3.8-Flash-Next \
     --host "${QWEN_HOST:-0.0.0.0}" --port "${QWEN_PORT:-8000}" \
     --dtype bfloat16 \
+    --kv-cache-dtype "${QWEN_KV_CACHE_DTYPE:-auto}" \
     --max-model-len "${QWEN_CONTEXT:-auto}" \
     --max-num-seqs "${QWEN_SEQS:-16}" \
     --max-num-batched-tokens "${QWEN_BATCH_TOKENS:-2048}" \

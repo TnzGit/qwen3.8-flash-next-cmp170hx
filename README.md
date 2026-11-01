@@ -13,7 +13,8 @@ fine-tune) → AutoRound quantization**.
 · [Qwen3.8-Flash-Next-Uncensored-AutoRound-3bpw-MTP](https://huggingface.co/klee100/Qwen3.8-Flash-Next-Uncensored-AutoRound-3bpw-MTP)
 (OrcaRouter base)
 
-· [Full vLLM patch](patches/qwen38-ple-ssd.patch)
+· [Full SSD-PLE vLLM patch](patches/qwen38-ple-ssd.patch)
+· [SM80 FP8 QSA KV backport](patches/qwen38-sm80-fp8-qsa-kv.patch) — **opt-in, GPU qualification pending** ([technical notes](docs/FP8-SM80.md), [local-agent handover](handover.md))
 · [Setup guide](docs/GUIDE.md)
 · [Running CMP170HX uncensored service profile and autostart](docs/CMP170HX-SERVICE.md)
 
@@ -38,8 +39,11 @@ latency. [Details](docs/RESULTS.md) · [Raw data](results/README.md)
 ## vLLM requirements
 
 Apply the patch to **`a5a30471ff2bb7f0824f2da10e358af98d304472`** and build
-`ple_ssd_io.so`. It adds async PLE reads/read-ahead, metadata-only loading,
-CUDA graph host breaks, mixed-bit expert handling, and MTP layer remapping.
+`ple_ssd_io.so`. The installer applies the SSD PLE patch followed by the separately guarded
+SM80 FP8 QSA backport. The first adds async PLE reads/read-ahead,
+metadata-only loading, CUDA graph host breaks, mixed-bit expert handling,
+and MTP layer remapping. The second is dormant unless the launcher receives
+`QWEN_KV_CACHE_DTYPE=fp8` (default `auto`, current BF16 behavior).
 [Implementation](docs/IMPLEMENTATION.md)
 
 Follow the [installation and screen guide](docs/GUIDE.md). The environment is

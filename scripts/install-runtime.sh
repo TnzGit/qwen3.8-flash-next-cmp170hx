@@ -3,6 +3,7 @@
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 "$REPO_DIR/scripts/apply-patch.sh"
+bash "$REPO_DIR/scripts/apply-fp8-kv.sh"
 if [[ ! -x "$VLLM_VENV/bin/python" ]]; then
     uv venv --python 3.12 "$VLLM_VENV"
 fi
