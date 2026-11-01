@@ -41,6 +41,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_fp8_sm80_backport.py' -v
           python -m py_compile "$VLLM_SOURCE/vllm/models/qwen4_exp/nvidia/ops/qsa.py" "$VLLM_SOURCE/vllm/models/qwen4_exp/nvidia/qsa.py"
+          python -m py_compile benchmarks/bench_fp8_kv_capacity.py
       - name: Check opt-in CLI flag without starting model
         env:
           VLLM_WORKDIR: ${{ runner.temp }}/vllm
