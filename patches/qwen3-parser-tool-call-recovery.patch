@@ -1,0 +1,60 @@
+From 3f466c852cfd3882820af8dd7963ac775174bce4 Mon Sep 17 00:00:00 2001
+From: vLLM upstream <noreply@vllm.ai>
+Date: Tue, 14 Oct 2026 10:01:25 +0000
+Subject: [PATCH] [Bugfix][Parser] Recover genuine tool calls after unclosed
+ Qwen3 function opener in prose (#59928)
+
+Upstream commit 3f466c852cfd3882820af8dd7963ac775174bce4, merged 2026-10-14.
+Fixes vllm-project/vllm#58227. Absent from deployed build
+0.29.1rc1.dev402+ga5a30471f (base commit a5a30471f, 2026-09-19).
+
+Verified in the target host's own venv against the deployed source:
+  tests/parser/engine/test_qwen3.py                  51 passed
+  the six #59928 regression tests    4 failed before / 6 passed after
+Also reproduced and confirmed on a CPU parser harness using the deployed
+tokenizer before the patch was applied to the service host.
+---
+ vllm/parser/qwen3.py | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/vllm/parser/qwen3.py b/vllm/parser/qwen3.py
+--- a/vllm/parser/qwen3.py
++++ b/vllm/parser/qwen3.py
+@@ -169,10 +169,37 @@ def qwen3_config(
+                 ParserState.TOOL_BETWEEN,
+                 (EventType.TOOL_CALL_END,),
+             ),
++            # regression issue 58227
++            # <function=...</tool_call>
++            # function name is not closed, go to content
++            (ParserState.TOOL_NAME, "TOOL_END"): Transition(
++                ParserState.CONTENT,
++                (EventType.TOOL_CALL_END,),
++            ),
++            # regression issue 58227
++            # <function=...<tool_call>
++            # unclosed tool call followed by another tool call
++            (ParserState.TOOL_NAME, "TOOL_START"): Transition(
++                ParserState.TOOL_PREAMBLE,
++                (EventType.TOOL_CALL_END, EventType.TOOL_CALL_START),
++            ),
++            # regression issue 58227
++            # <function=...<function=
++            # unclosed function name followed by another function name
++            (ParserState.TOOL_NAME, "FUNC_PREFIX"): Transition(
++                ParserState.TOOL_NAME,
++                (EventType.TOOL_CALL_END, EventType.TOOL_CALL_START),
++            ),
+             (ParserState.TOOL_ARGS, "FUNC_END"): Transition(
+                 ParserState.TOOL_BETWEEN,
+                 (EventType.TOOL_CALL_END,),
+             ),
++            # regression issue 58227
++            # <function=abc>...<function=
++            (ParserState.TOOL_ARGS, "FUNC_PREFIX"): Transition(
++                ParserState.TOOL_NAME,
++                (EventType.TOOL_CALL_END, EventType.TOOL_CALL_START),
++            ),
+             (ParserState.TOOL_ARGS, "PARAM_START"): Transition(
+                 ParserState.TOOL_ARGS,
+                 (EventType.ARG_VALUE_CHUNK,),

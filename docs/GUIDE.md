@@ -33,7 +33,7 @@ git -C "$VLLM_WORKDIR/src" checkout a5a30471ff2bb7f0824f2da10e358af98d304472
 ```
 
 The runtime environment is **`$VLLM_WORKDIR/.venv`**, normally `~/vllm/.venv`.
-The installer checks and applies the patch, installs the matching precompiled
+The installer checks and applies the patches, installs the matching precompiled
 wheel and build dependencies, installs the source in editable mode, and compiles
 `optimization/ple_ssd_io.so`. The C helper uses Linux system calls and does not
 need libaio/liburing or a vLLM CUDA-kernel rebuild. The model download is pinned

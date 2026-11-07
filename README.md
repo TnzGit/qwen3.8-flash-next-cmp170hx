@@ -14,6 +14,7 @@ fine-tune) → AutoRound quantization**.
 (OrcaRouter base)
 
 · [Full vLLM patch](patches/qwen38-ple-ssd.patch)
+· [Qwen3 tool-call recovery patch](patches/qwen3-parser-tool-call-recovery.patch)
 · [Setup guide](docs/GUIDE.md)
 · [Running CMP170HX uncensored service profile and autostart](docs/CMP170HX-SERVICE.md)
 
